@@ -1,0 +1,312 @@
+﻿<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Parkour: Double Jump & Gravity</title>
+    <style>
+        /* CSS UNIFICADO */
+        body {
+            margin: 0;
+            background: #B0C4DE ;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+
+
+        #game-wrapper {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 2px solid #F0F8FF;
+        }
+
+
+        canvas {
+            background: #FFE4E1;
+            display: block;
+        }
+
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+        }
+
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-left: 4px solid #F5F5F5;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+
+        #msg {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            font-weight: 900;
+            color: #D8BFD8 ;
+            text-shadow: 0 0 20px #A52A2A;
+            opacity: 0;
+            transition: 0.4s;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-wrapper">
+        <div id="ui">
+            <div class="stat-box">FASE: <span id="level-display">1</span>/20</div>
+            <div class="stat-box" style="border-color: #FFFACD; margin-top: 5px;">ESPAÇO 2X: PULO DUPLO</div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="msg">LEVEL COMPLETO!</div>
+    </div>
+
+
+    <script>
+        /* JAVASCRIPT UNIFICADO */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const levelDisplay = document.getElementById('level-display');
+        const msg = document.getElementById('msg');
+
+
+        canvas.width = 900;
+        canvas.height = 500;
+
+
+        let currentLevel = 0;
+        const gravity = 0.7;
+        const friction = 0.85;
+        const camera = { x: 0 };
+
+
+        const player = {
+            x: 100, y: 300, w: 25, h: 25,
+            velX: 0, velY: 0,
+            speed: 1.0, maxSpeed: 7,
+            jumpForce: 12, 
+            jumping: false,
+            canDoubleJump: false 
+        };
+
+
+        function generateLevels() {
+            const lvls = [];
+            for (let i = 0; i < 20; i++) {
+                let worldWidth = 1500 + (i * 500); 
+                let platforms = [{ x: 0, y: 400, w: 400, h: 100, isMoving: false }];
+                let obstacles = [];
+                
+                let lastX = 400;
+                let lastY = 400;
+
+
+                while (lastX < worldWidth - 300) {
+                    let gap = 120 + (Math.random() * 80) + (i * 5); 
+                    let width = 100 + Math.random() * 100;
+                    let nextY = lastY + (Math.random() * 160 - 80);
+                    
+                    if (nextY < 200) nextY = 200; 
+                    if (nextY > 430) nextY = 430; 
+                    
+                    let moveRange = 0;
+                    let isMoving = i > 2 && Math.random() < (0.2 + (i * 0.03)); 
+                    if (isMoving) moveRange = 50 + (Math.random() * 100);
+
+
+                    let plat = { 
+                        x: lastX + gap, 
+                        y: nextY, 
+                        w: width, 
+                        h: 20, 
+                        isMoving: isMoving,
+                        baseX: lastX + gap,
+                        moveRange: moveRange,
+                        speed: 0.002 + (Math.random() * 0.003)
+                    };
+                    
+                    platforms.push(plat);
+
+
+                    if (!isMoving && i > 1 && Math.random() > 0.6) {
+                        obstacles.push({ x: plat.x + (plat.w/4), y: plat.y - 15, w: plat.w/2, h: 15 });
+                    }
+
+
+                    lastX += gap + width;
+                    lastY = nextY;
+                }
+
+
+                const lastPlat = platforms[platforms.length - 1];
+                lvls.push({
+                    width: worldWidth,
+                    platforms: platforms,
+                    obstacles: obstacles,
+                    goal: { x: lastPlat.x + (lastPlat.w/2) - 15, y: lastPlat.y - 50, w: 30, h: 30 }
+                });
+            }
+            return lvls;
+        }
+
+
+        const levels = generateLevels();
+        const keys = {};
+
+
+        window.addEventListener('keydown', e => {
+            if (keys[e.code]) return; 
+            keys[e.code] = true;
+
+
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                if (!player.jumping) {
+                    player.velY = -player.jumpForce;
+                    player.jumping = true;
+                    player.canDoubleJump = true;
+                } else if (player.canDoubleJump) {
+                    player.velY = -player.jumpForce * 0.8; 
+                    player.canDoubleJump = false;
+                }
+            }
+        });
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+
+        function update() {
+            const lvl = levels[currentLevel];
+
+
+            if (keys['ArrowRight'] || keys['KeyD']) { if (player.velX < player.maxSpeed) player.velX += player.speed; }
+            if (keys['ArrowLeft'] || keys['KeyA']) { if (player.velX > -player.maxSpeed) player.velX -= player.speed; }
+
+
+            player.velX *= friction;
+            player.velY += gravity;
+            player.x += player.velX;
+            player.y += player.velY;
+
+
+            lvl.platforms.forEach(p => {
+                if (p.isMoving) {
+                    p.x = p.baseX + Math.sin(Date.now() * p.speed) * p.moveRange;
+                }
+            });
+
+
+            let targetCameraX = player.x - canvas.width / 3;
+            camera.x += (targetCameraX - camera.x) * 0.1;
+            if (camera.x < 0) camera.x = 0;
+            if (camera.x > lvl.width - canvas.width) camera.x = lvl.width - canvas.width;
+
+
+            player.jumping = true;
+            lvl.platforms.forEach(p => {
+                if (player.x < p.x + p.w && player.x + player.w > p.x &&
+                    player.y + player.h > p.y && player.y + player.h < p.y + p.h + player.velY + 1) {
+                    
+                    player.jumping = false;
+                    player.canDoubleJump = false;
+                    player.velY = 0;
+                    player.y = p.y - player.h;
+                }
+            });
+
+
+            lvl.obstacles.forEach(o => {
+                if (player.x < o.x + o.w && player.x + player.w > o.x &&
+                    player.y < o.y + o.h && player.y + player.h > o.y) resetPlayer();
+            });
+
+
+            if (player.x < lvl.goal.x + lvl.goal.w && player.x + player.w > lvl.goal.x &&
+                player.y < lvl.goal.y + lvl.goal.h && player.y + player.h > lvl.goal.y) nextLevel();
+            
+            if (player.y > canvas.height + 100) resetPlayer();
+
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+
+        function nextLevel() {
+            if (currentLevel < 19) {
+                currentLevel++;
+                levelDisplay.innerText = currentLevel + 1;
+                msg.style.opacity = 1;
+                setTimeout(() => msg.style.opacity = 0, 1000);
+                resetPlayer();
+            } else {
+                alert("VOCÊ É UM DEUS DO PARKOUR!");
+                currentLevel = 0;
+                resetPlayer();
+            }
+        }
+
+
+        function resetPlayer() {
+            player.x = 100; player.y = 300;
+            player.velX = 0; player.velY = 0;
+        }
+
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(-camera.x, 0);
+
+
+            const lvl = levels[currentLevel];
+
+
+            lvl.platforms.forEach(p => {
+                ctx.fillStyle = p.isMoving ? "#3a1c5e" : "#16213e";
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.fillStyle = p.isMoving ? "#a200ff" : "#00d4ff"; 
+                ctx.fillRect(p.x, p.y, p.w, 3);
+            });
+
+
+            lvl.obstacles.forEach(o => {
+                ctx.shadowBlur = 15; ctx.shadowColor = "#ff4d4d";
+                ctx.fillStyle = "#ff4d4d";
+                ctx.beginPath();
+                ctx.moveTo(o.x, o.y + o.h); ctx.lineTo(o.x + o.w/2, o.y); ctx.lineTo(o.x + o.w, o.y + o.h);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+
+            ctx.shadowBlur = 20; ctx.shadowColor = "#00ff00";
+            ctx.fillStyle = "#00ff00";
+            ctx.beginPath();
+            ctx.arc(lvl.goal.x + 15, lvl.goal.y + 15, 12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+
+            ctx.shadowBlur = 15; ctx.shadowColor = "#ff007f";
+            ctx.fillStyle = "#ff007f";
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.restore();
+        }
+
+
+        update();
+    </script>
+</body>
+</html>
